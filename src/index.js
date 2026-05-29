@@ -8,7 +8,7 @@ const cors = require("cors");
 const rateLimit = require("express-rate-limit")
 dotenv.config();
 const app = express();
-const port = process.env.PORT;
+const port = process.env.PORT; // Port number for server
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(cors({
