@@ -5,12 +5,17 @@ const routes = require("./routes");
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
-const rateLimit = require("express-rate-limit")
+const rateLimit = require("express-rate-limit");
+const path = require("path");
+
 dotenv.config();
 const app = express();
 const port = process.env.PORT; // Port number for server
+
 app.use(bodyParser.json());
 app.use(cookieParser());
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 app.use(cors({
   origin: [
     "http://localhost:5173",
