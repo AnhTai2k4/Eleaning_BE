@@ -143,15 +143,16 @@ const signinUser = async ({ username, password }) => {
       const Access_token = await createAccessToken({
         id: isCheck._id,
         isAdmin: isCheck.isAdmin,
+        isTeacher: isCheck.isTeacher,
         name: isCheck.name,
         username: isCheck.username,
         email: isCheck.email,
         phone: isCheck.phone,
-        
       });
       const Refresh_token = await createRefreshToken({
         id: isCheck._id,
         isAdmin: isCheck.isAdmin,
+        isTeacher: isCheck.isTeacher,
         name: isCheck.name,
         username: isCheck.username,
         email: isCheck.email,

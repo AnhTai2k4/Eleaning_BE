@@ -3,7 +3,7 @@ const { Exam, Submission } = require('../models/ExamModel');
 // 1. Giáo viên tạo đề thi
 const createExam = async (req, res) => {
   try {
-    const { title, description, fileUrl, duration, questionsCount, answers, type, createdBy } = req.body;
+    const { title, description, fileUrl, duration, questionsCount, answers, type, grade, createdBy } = req.body;
     
     if (!title || !createdBy) {
       return res.status(400).json({ status: 'ERR', message: 'Thiếu thông tin bắt buộc' });
@@ -15,8 +15,9 @@ const createExam = async (req, res) => {
       fileUrl,
       duration: Number(duration),
       questionsCount: Number(questionsCount),
-      answers, // ['A', 'B', 'C', ...]
+      answers, 
       type,
+      grade: grade ? Number(grade) : 12,
       createdBy
     });
 
@@ -216,6 +217,19 @@ const getSubmissionsByExam = async (req, res) => {
   }
 };
 
+// 10. Học sinh xem lịch sử làm bài
+const getSubmissionsByStudent = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const submissions = await Submission.find({ studentId })
+      .populate('examId', 'title duration questionsCount type grade')
+      .sort({ completedAt: -1 });
+    res.status(200).json({ status: 'OK', data: submissions });
+  } catch (err) {
+    res.status(500).json({ status: 'ERR', message: err.message });
+  }
+};
+
 module.exports = {
   createExam,
   updateExam,
@@ -225,5 +239,6 @@ module.exports = {
   startAttempt,
   saveAttemptProgress,
   submitAttempt,
-  getSubmissionsByExam
+  getSubmissionsByExam,
+  getSubmissionsByStudent
 };

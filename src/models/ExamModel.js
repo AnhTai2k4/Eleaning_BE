@@ -10,6 +10,7 @@ const ExamSchema = new Schema({
   questionsCount: { type: Number, default: 10 },
   answers: { type: Map, of: String },           // Các đáp án đúng: { "1": "A", "13_a": "Đúng", "17": "12" }
   type: { type: String, enum: ['exam', 'homework'], default: 'exam' },
+  grade: { type: Number, enum: [10, 11, 12], default: 12 }, // Lớp 10, 11, 12
   createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true }
 }, { timestamps: true });
 

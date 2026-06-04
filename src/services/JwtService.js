@@ -26,15 +26,15 @@ const refreshTokenService = (token) => {
         });
       }
 
-      const { id, name,username,  email, isAdmin ,phone} = user;
-      const Access_token = await createAccessToken({ id, isAdmin,username,  email, isAdmin,phone });
+      const { id, name, username, email, isAdmin, isTeacher, phone } = user;
+      const Access_token = await createAccessToken({ id, isAdmin, isTeacher, username, email, phone });
 
       resolve({
         success: true,
         message: "Create token hoàn thành",
         data: {
           access_token: Access_token,
-          user: { id, name, email,username, isAdmin },
+          user: { id, name, email, username, isAdmin, isTeacher },
         },
       });
     });

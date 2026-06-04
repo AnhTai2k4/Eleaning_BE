@@ -73,6 +73,7 @@ const googleLogin = async (req, res) => {
       {
         id: user._id,
         isAdmin: user.isAdmin,
+        isTeacher: user.isTeacher,
       },
       process.env.JWT_SECRET || "chuoi_bi_mat_cua_vstep_ne", // Lấy từ file .env
       { expiresIn: "1d" }, // Hạn sử dụng 1 ngày
@@ -91,6 +92,7 @@ const googleLogin = async (req, res) => {
         username: user.username,
         email: user.email,
         isAdmin: user.isAdmin,
+        isTeacher: user.isTeacher,
         phone: user.phone || "",
         avatar: user.avatar || picture,
       },
