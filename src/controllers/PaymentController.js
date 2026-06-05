@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const axios = require("axios");
 const Course = require("../models/CourseModel");
 const User = require("../models/UserModel");
+const Transaction = require("../models/TransactionModel");
 
 
 
@@ -115,6 +116,17 @@ const verifyMomoPayment = async (req, res) => {
             user.courseBuyed.push(courseId);
             await user.save();
           }
+
+          // Create real Transaction entry
+          await Transaction.create({
+            user: userId,
+            course: courseId,
+            amount: course ? course.price : 500000,
+            method: "MoMo",
+            status: "Thành công",
+            orderId: orderId || `${Date.now()}`
+          });
+
           return res.status(200).json({
             success: true,
             message: "Thanh toán MoMo thành công",
@@ -155,6 +167,16 @@ const mockPaymentSuccess = async (req, res) => {
       await user.save();
     }
 
+    // Create real Transaction entry
+    await Transaction.create({
+      user: userId,
+      course: courseId,
+      amount: course ? course.price : 500000,
+      method: "MoMo",
+      status: "Thành công",
+      orderId: `MOCK-${Date.now()}`
+    });
+
     return res.status(200).json({
       success: true,
       message: "Thanh toán thành công (Bypass)",
@@ -168,8 +190,70 @@ const mockPaymentSuccess = async (req, res) => {
   }
 };
 
+const getAllTransactions = async (req, res) => {
+  try {
+    // 1. Fetch all current transactions
+    let transactions = await Transaction.find();
+    const existingTxKeys = new Set(
+      transactions.map(tx => `${tx.user.toString()}_${tx.course.toString()}`)
+    );
+
+    // 2. Fetch all users and courses
+    const users = await User.find({ courseBuyed: { $exists: true, $not: { $size: 0 } } });
+    const courses = await Course.find();
+    const courseMap = {};
+    courses.forEach(c => {
+      courseMap[c._id.toString()] = c;
+    });
+
+    // 3. Find missing transactions and backfill them
+    const backfillData = [];
+    for (const u of users) {
+      if (u.courseBuyed) {
+        for (const courseId of u.courseBuyed) {
+          const key = `${u._id.toString()}_${courseId.toString()}`;
+          if (!existingTxKeys.has(key)) {
+            const c = courseMap[courseId.toString()];
+            if (c) {
+              backfillData.push({
+                user: u._id,
+                course: c._id,
+                amount: c.price || 500000,
+                method: "MoMo",
+                status: "Thành công",
+                orderId: `BF-${u._id.toString().substring(18).toUpperCase()}-${c._id.toString().substring(18).toUpperCase()}`,
+                createdAt: u.createdAt || new Date()
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (backfillData.length > 0) {
+      console.log(`Auto-synchronizing ${backfillData.length} missing transactions...`);
+      await Transaction.insertMany(backfillData);
+    }
+
+    // 4. Fetch the final populated and sorted transactions list
+    const finalTransactions = await Transaction.find()
+      .populate("user", "name email")
+      .populate("course", "title price grade")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: finalTransactions
+    });
+  } catch (error) {
+    console.error("Lỗi lấy danh sách giao dịch:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
 module.exports = {
   createMomoPayment,
   verifyMomoPayment,
   mockPaymentSuccess,
+  getAllTransactions,
 };

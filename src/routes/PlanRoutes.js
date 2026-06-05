@@ -13,6 +13,7 @@ router.get('/daily', PlanController.getDailyAction);
 router.get('/daily/week', PlanController.getDailyActionsByWeek);
 router.put('/daily/review', PlanController.reviewDailyAction);
 router.get('/daily/teacher', PlanController.getDailyActionsForTeacher);
+router.post('/daily/ai-comment', PlanController.generateAIComment);
 
 // ===== TỔNG KẾT TUẦN =====
 router.post('/summary', PlanController.createOrUpdateWeeklySummary);

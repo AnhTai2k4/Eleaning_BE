@@ -1,32 +1,31 @@
 const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
 
-const lessonSchema = new mongoose.Schema({
-    title: String,
-    subtitle: String,
-    slug: { type: String, required: true }, // Thêm field slug cho lesson
-    // THÊM 3 TRƯỜNG NÀY VÀO:
-    videoType: { type: String, enum: ['youtube', 'vimeo', 'bunny'], default: 'youtube' },
-    videoId: { type: String }, // Ví dụ: 'dQw4w9WgXcQ' (nếu là Youtube) hoặc '123456789' (nếu là Vimeo)
-    duration: { type: String }, // Thời lượng (VD: "50:28")
-    
-    isFree: { type: Boolean, default: false }
+const LessonSchema = new Schema({
+  title: { type: String, required: true },
+  subtitle: { type: String, default: '' },
+  slug: { type: String, required: true },
+  videoType: { type: String, enum: ['youtube', 'vimeo', 'bunny'], default: 'youtube' },
+  videoId: { type: String, default: '' },
+  duration: { type: String, default: '' },
+  isFree: { type: Boolean, default: false }
 });
 
-const sectionSchema = new mongoose.Schema({
-    sectionTitle: String,
-    lessons: [lessonSchema] // Danh sách bài học con
+const SectionSchema = new Schema({
+  sectionTitle: { type: String, required: true },
+  lessons: [LessonSchema]
 });
 
-const courseSchema = new mongoose.Schema({
-    title: { type: String, required: true },
-    slug: { type: String, required: true, unique: true }, // Cái này CỰC KỲ QUAN TRỌNG để làm URL
-    price: { type: Number, required: true },
-    rating: { type: Number, default: 5.0 },
-    reviews: { type: Number, default: 0 },
-    students: { type: Number, default: 0 },
-    overview: { type: String }, // Tóm tắt cấu trúc
-    description: { type: String }, // Bài viết chi tiết (HTML)
-    sections: [sectionSchema], // Lộ trình học (Accordion)
+const CourseSchema = new Schema({
+  title: { type: String, required: true, unique: true },
+  slug: { type: String, required: true, unique: true },
+  price: { type: Number, required: true },
+  grade: { type: Number, enum: [10, 11, 12], default: 12 },
+  overview: { type: String, default: '' },
+  description: { type: String, default: '' },
+  sections: [SectionSchema]
 }, { timestamps: true });
 
-module.exports = mongoose.model('Course', courseSchema);
+const Course = mongoose.model('Course', CourseSchema);
+
+module.exports = Course;

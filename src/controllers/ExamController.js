@@ -83,6 +83,7 @@ const startAttempt = async (req, res) => {
 
     let submission = await Submission.findOne({ examId, studentId, status: 'in_progress' });
     if (!submission) {
+      await Submission.deleteMany({ examId, studentId, status: 'completed' });
       submission = await Submission.create({
         examId,
         studentId,

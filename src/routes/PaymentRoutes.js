@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const jwt = require("jsonwebtoken");
 const PaymentController = require("../controllers/PaymentController");
+const { authMiddleware } = require("../middleware/AuthMiddleWare");
 
 // Middleware xác thực token đơn giản cho khách hàng thanh toán
 const authCustomer = (req, res, next) => {
@@ -32,5 +33,8 @@ router.post("/mock-success", authCustomer, PaymentController.mockPaymentSuccess)
 
 // Route verify kết quả thanh toán từ Client gửi lên (Không cần token vì đã có bảo mật chữ ký chữ ký từ cổng thanh toán)
 router.post("/momo-verify", PaymentController.verifyMomoPayment);
+
+// Route lấy danh sách giao dịch cho admin
+router.get("/all-transactions", authMiddleware, PaymentController.getAllTransactions);
 
 module.exports = router;

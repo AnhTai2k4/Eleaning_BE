@@ -1,142 +1,120 @@
 const Course = require('../models/CourseModel');
 
+// 1. Create a course
 const createCourse = async (req, res) => {
   try {
-    const { title, slug, price, overview, description, sections } = req.body;
-
-    if (!title || !slug || price == null) {
-      return res.status(400).json({ message: 'Thiếu thông tin khóa học bắt buộc.' });
+    const { title, slug, price } = req.body;
+    if (!title || !slug || price === undefined) {
+      return res.status(400).json({ status: 'ERR', message: 'Thiếu thông tin bắt buộc (title, slug, price)' });
     }
 
-    const existingCourse = await Course.findOne({ slug });
-    if (existingCourse) {
-      return res.status(409).json({ message: 'Slug khóa học đã tồn tại.' });
-    }
-
-    const course = await Course.create({ title, slug, price, overview, description, sections });
-    return res.status(201).json(course);
-  } catch (error) {
-    return res.status(500).json({ message: 'Lỗi Server', error: error.message });
+    const newCourse = await Course.create(req.body);
+    res.status(201).json(newCourse);
+  } catch (err) {
+    res.status(500).json({ status: 'ERR', message: err.message });
   }
 };
 
+// 2. Get all courses
 const getAllCourses = async (req, res) => {
   try {
-    const courses = await Course.find();
-    return res.status(200).json(courses);
-  } catch (error) {
-    return res.status(500).json({ message: 'Lỗi Server', error: error.message });
+    const courses = await Course.find().sort({ slug: 1 });
+    res.status(200).json(courses);
+  } catch (err) {
+    res.status(500).json({ status: 'ERR', message: err.message });
   }
 };
 
+// 3. Get single course by slug
 const getCourse = async (req, res) => {
   try {
-    const { slug } = req.params; // Lấy slug từ URL (vd: luyen-thi-vstep-b1)
-
+    const { slug } = req.params;
     const course = await Course.findOne({ slug });
     if (!course) {
-      return res.status(404).json({ message: 'Không tìm thấy khóa học!' });
+      return res.status(404).json({ status: 'ERR', message: 'Không tìm thấy khóa học' });
     }
-
-    return res.status(200).json(course);
-  } catch (error) {
-    return res.status(500).json({ message: 'Lỗi Server', error: error.message });
+    res.status(200).json(course);
+  } catch (err) {
+    res.status(500).json({ status: 'ERR', message: err.message });
   }
 };
 
-const updateCourse = async (req, res) => {
-  try {
-    const { slug } = req.params;
-    const updateData = req.body;
-
-    const course = await Course.findOneAndUpdate({ slug }, updateData, {
-      new: true,
-      runValidators: true,
-    });
-
-    if (!course) {
-      return res.status(404).json({ message: 'Không tìm thấy khóa học để cập nhật.' });
-    }
-
-    return res.status(200).json(course);
-  } catch (error) {
-    return res.status(500).json({ message: 'Lỗi Server', error: error.message });
-  }
-};
-
-const deleteCourse = async (req, res) => {
-  try {
-    const { slug } = req.params;
-    const course = await Course.findOneAndDelete({ slug });
-
-    if (!course) {
-      return res.status(404).json({ message: 'Không tìm thấy khóa học để xóa.' });
-    }
-
-    return res.status(200).json({ message: 'Xóa khóa học thành công.' });
-  } catch (error) {
-    return res.status(500).json({ message: 'Lỗi Server', error: error.message });
-  }
-};
-
+// 4. Get lesson inside a course
 const getLesson = async (req, res) => {
   try {
     const { courseSlug, lessonSlug } = req.params;
-    console.log('Received courseSlug:', courseSlug);
-    console.log('Received lessonSlug:', lessonSlug);
-
     const course = await Course.findOne({ slug: courseSlug });
     if (!course) {
-      return res.status(404).json({ message: 'Không tìm thấy khóa học!' });
+      return res.status(404).json({ status: 'ERR', message: 'Không tìm thấy khóa học' });
     }
 
-    // Tìm lesson trong sections
-    let lesson = null;
-    let sectionTitle = '';
-    console.log('Searching for lessonSlug:', lessonSlug);
-    console.log('Course sections:', course.sections.map(s => ({
-      sectionTitle: s.sectionTitle,
-      lessons: s.lessons.map(l => ({ title: l.title, slug: l.slug }))
-    })));
-    
-    for (const section of course.sections) {
-      // Ưu tiên tìm theo slug, nếu không có thì tìm theo title match
-      lesson = section.lessons.find(l => 
-        l.slug === lessonSlug || 
-        l.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === lessonSlug
-      );
-      if (lesson) {
-        sectionTitle = section.sectionTitle;
-        console.log('Found lesson:', lesson.title, 'in section:', sectionTitle);
-        break;
+    let foundLesson = null;
+    let foundSectionTitle = '';
+
+    if (course.sections) {
+      for (const section of course.sections) {
+        const les = section.lessons.find(l => l.slug === lessonSlug);
+        if (les) {
+          foundLesson = les;
+          foundSectionTitle = section.sectionTitle;
+          break;
+        }
       }
     }
 
-    if (!lesson) {
-      return res.status(404).json({ message: 'Không tìm thấy bài học!' });
+    if (!foundLesson) {
+      return res.status(404).json({ status: 'ERR', message: 'Không tìm thấy bài học' });
     }
 
-    // Tạo videoUrl từ videoType và videoId
     let videoUrl = '';
-    if (lesson.videoType === 'youtube') {
-      videoUrl = `https://www.youtube.com/embed/${lesson.videoId}`;
-    } else if (lesson.videoType === 'vimeo') {
-      videoUrl = `https://vimeo.com/${lesson.videoId}`;
+    if (foundLesson.videoType === 'youtube') {
+      videoUrl = `https://www.youtube.com/embed/${foundLesson.videoId}`;
+    } else if (foundLesson.videoType === 'vimeo') {
+      videoUrl = `https://player.vimeo.com/video/${foundLesson.videoId}`;
+    } else if (foundLesson.videoType === 'bunny') {
+      videoUrl = `https://iframe.mediadelivery.net/embed/${foundLesson.videoId}`;
+    } else {
+      videoUrl = `https://www.youtube.com/embed/${foundLesson.videoId}`;
     }
 
-    const lessonData = {
-      title: lesson.title,
-      subtitle: lesson.subtitle,
-      videoUrl,
-      duration: lesson.duration,
-      isFree: lesson.isFree,
-      sectionTitle,
-      courseTitle: course.title
+    const responseData = {
+      ...foundLesson.toObject(),
+      courseTitle: course.title,
+      sectionTitle: foundSectionTitle,
+      videoUrl
     };
 
-    return res.status(200).json(lessonData);
-  } catch (error) {
-    return res.status(500).json({ message: 'Lỗi Server', error: error.message });
+    res.status(200).json(responseData);
+  } catch (err) {
+    res.status(500).json({ status: 'ERR', message: err.message });
+  }
+};
+
+// 5. Update course by slug
+const updateCourse = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const updated = await Course.findOneAndUpdate({ slug }, req.body, { new: true });
+    if (!updated) {
+      return res.status(404).json({ status: 'ERR', message: 'Không tìm thấy khóa học' });
+    }
+    res.status(200).json(updated);
+  } catch (err) {
+    res.status(500).json({ status: 'ERR', message: err.message });
+  }
+};
+
+// 6. Delete course by slug
+const deleteCourse = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const deleted = await Course.findOneAndDelete({ slug });
+    if (!deleted) {
+      return res.status(404).json({ status: 'ERR', message: 'Không tìm thấy khóa học' });
+    }
+    res.status(200).json({ status: 'OK', message: 'Xóa khóa học thành công' });
+  } catch (err) {
+    res.status(500).json({ status: 'ERR', message: err.message });
   }
 };
 
@@ -144,7 +122,7 @@ module.exports = {
   createCourse,
   getAllCourses,
   getCourse,
-  updateCourse,
-  deleteCourse,
   getLesson,
+  updateCourse,
+  deleteCourse
 };

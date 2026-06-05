@@ -1,4 +1,5 @@
 const { Goal, DailyAction, WeeklySummary } = require('../models/PlanModel');
+const axios = require('axios');
 
 // ======================== GOAL (MỤC TIÊU THÁNG) ========================
 
@@ -187,6 +188,62 @@ const reviewWeeklySummary = async (req, res) => {
   }
 };
 
+const generateAIComment = async (req, res) => {
+  try {
+    const { tasks, reflection, selfScore, date } = req.body;
+    const taskCount = tasks?.length || 0;
+    const totalActualTime = tasks?.reduce((sum, t) => sum + (Number(t.actualTime) || 0), 0) || 0;
+    const totalPlannedTime = tasks?.reduce((sum, t) => sum + (Number(t.time) || 0), 0) || 0;
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      // Fallback to local rule-based comment if no API key is provided
+      let fallbackComment = `Nhận xét kế hoạch ngày ${new Date(date).toLocaleDateString('vi-VN')}:\n`;
+      fallbackComment += `- Học sinh hoàn thành ${taskCount} công việc chính.\n`;
+      fallbackComment += `- Học tập thực tế: ${totalActualTime} giờ (dự kiến: ${totalPlannedTime} giờ).\n`;
+      if (totalActualTime >= totalPlannedTime) {
+        fallbackComment += `- Hoàn thành rất tốt mục tiêu thời gian đã tự đề xuất. `;
+      } else {
+        fallbackComment += `- Thời gian học thực tế còn ít hơn dự kiến, em cần chú ý quản lý thời gian tập trung hơn. `;
+      }
+      if (selfScore >= 8) {
+        fallbackComment += `Tinh thần tự giác cao (${selfScore}/10). `;
+      }
+      if (reflection) {
+        fallbackComment += `Rút kinh nghiệm tốt: "${reflection}".`;
+      }
+      return res.status(200).json({ status: 'OK', data: fallbackComment });
+    }
+
+    const prompt = `Bạn là một trợ lý AI giáo dục thông thái (AI Co-pilot). Hãy nhận xét kế hoạch tự học trong ngày của học sinh bằng tiếng Việt ngắn gọn trong 3-4 dòng.
+Thông tin học sinh nộp:
+- Tổng số công việc tự học dự kiến: ${taskCount} công việc.
+- Tổng thời gian tự học thực tế: ${totalActualTime} giờ (dự kiến ban đầu: ${totalPlannedTime} giờ).
+- Học sinh tự đánh giá tinh thần kỷ luật: ${selfScore || 10}/10 điểm.
+- Rút kinh nghiệm của học sinh: "${reflection || 'Học sinh không ghi chú gì thêm'}"
+
+Danh sách các công việc cụ thể:
+${(tasks || []).map((t, i) => `${i+1}. Khía cạnh: ${t.aspect} | Dự kiến: ${t.time}h | Thực tế: ${t.actualTime}h | Hành động: ${t.action}`).join('\n')}
+
+Hãy đưa ra lời khuyên thiết thực, khen ngợi nếu học sinh tự giác và nhắc nhở chân thành nếu học sinh chưa đạt thời gian học dự kiến. Nhận xét cần ngắn gọn, súc tích và có thái độ khuyến khích học tập.`;
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
+    const response = await axios.post(geminiUrl, {
+      contents: [{ parts: [{ text: prompt }] }]
+    });
+
+    const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    res.status(200).json({ status: 'OK', data: aiText.trim() });
+  } catch (err) {
+    if (err.response) {
+      console.error('Gemini API Error Response Data:', JSON.stringify(err.response.data, null, 2));
+    } else {
+      console.error('Gemini API Error:', err.message);
+    }
+    res.status(500).json({ status: 'ERR', message: err.message, errorDetails: err.response?.data });
+  }
+};
+
 module.exports = {
   createOrUpdateGoal,
   getGoal,
@@ -199,4 +256,5 @@ module.exports = {
   createOrUpdateWeeklySummary,
   getWeeklySummary,
   reviewWeeklySummary,
+  generateAIComment,
 };
