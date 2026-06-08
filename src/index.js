@@ -30,18 +30,25 @@ app.get("/", (req, res) => {
   res.send("iu iu iu");
 });
 
-mongoose
-  .connect(process.env.MONGO_DB, {
-    serverSelectionTimeoutMS: 50000, // 5s
-  })
-  .then(() => {
-    console.log("Connect Successful");
-  })
-  .catch((err) => {
-    console.log("Loi: ", err);
+if (process.env.MONGO_DB) {
+  mongoose
+    .connect(process.env.MONGO_DB, {
+      serverSelectionTimeoutMS: 50000, // 5s
+    })
+    .then(() => {
+      console.log("Connect Successful");
+    })
+    .catch((err) => {
+      console.log("Loi kết nối MongoDB: ", err);
+    });
+} else {
+  console.error("MONGO_DB environment variable is missing!");
+}
+
+if (!process.env.VERCEL) {
+  app.listen(port || 3001, () => {
+    console.log("Server running on port", port || 3001);
   });
-app.listen(port, () => {
-  console.log("env ne", process.env.PORT);
-});
+}
 
 module.exports = app;
