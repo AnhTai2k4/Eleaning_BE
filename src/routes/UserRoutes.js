@@ -5,7 +5,7 @@ const UserController = require("../controllers/UserController");
 const {
   authMiddleware,
   authUserMiddleware,
-} = require("../middleware/AuthMiddleWare");
+} = require("../middleware/authMiddleware");
 
 const loginLimiter = rateLimit({
   windowMs: 1000,          // 1 giây

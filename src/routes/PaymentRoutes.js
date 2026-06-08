@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const jwt = require("jsonwebtoken");
 const PaymentController = require("../controllers/PaymentController");
-const { authMiddleware } = require("../middleware/AuthMiddleWare");
+const { authMiddleware } = require("../middleware/authMiddleware");
 
 // Middleware xác thực token đơn giản cho khách hàng thanh toán
 const authCustomer = (req, res, next) => {
