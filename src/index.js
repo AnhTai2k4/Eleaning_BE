@@ -43,3 +43,5 @@ mongoose
 app.listen(port, () => {
   console.log("env ne", process.env.PORT);
 });
+
+module.exports = app;
