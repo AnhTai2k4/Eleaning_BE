@@ -215,7 +215,7 @@ const generateAIComment = async (req, res) => {
       return res.status(200).json({ status: 'OK', data: fallbackComment });
     }
 
-    const prompt = `Bạn là một trợ lý AI giáo dục thông thái (AI Co-pilot). Hãy nhận xét kế hoạch tự học trong ngày của học sinh bằng tiếng Việt ngắn gọn trong 3-4 dòng.
+    const prompt = `Bạn là một trợ lý AI giáo dục thông thái (AI Co-pilot). Hãy nhận xét kế hoạch tự học trong ngày của học sinh bằng tiếng Việt ngắn gọn trong 3-4 dòng,hãy nhận xét như 1 giáo viên nghiêm túc, ít có câu cảm thán, chỉ nêu điểm mạnh, điểm yếu và đưa ra lời khuyên cho học sinh.
 Thông tin học sinh nộp:
 - Tổng số công việc tự học dự kiến: ${taskCount} công việc.
 - Tổng thời gian tự học thực tế: ${totalActualTime} giờ (dự kiến ban đầu: ${totalPlannedTime} giờ).
