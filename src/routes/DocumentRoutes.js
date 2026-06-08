@@ -30,7 +30,9 @@ router.post('/upload', upload.single('file'), (req, res) => {
     if (!req.file) {
       return res.status(400).json({ status: 'ERR', message: 'Không tìm thấy file tải lên' });
     }
-    const fileUrl = `http://localhost:3001/uploads/${req.file.filename}`;
+    const host = req.get('host');
+    const protocol = host.includes('localhost') ? 'http' : 'https';
+    const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
     res.status(200).json({ status: 'OK', fileUrl });
   } catch (err) {
     res.status(500).json({ status: 'ERR', message: err.message });

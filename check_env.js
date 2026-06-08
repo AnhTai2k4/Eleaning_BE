@@ -20,7 +20,7 @@ function testVnpay() {
   const tmnCode = "AFPGH33E";
   const secretKey = "X36HLAV241E67RGG7G5OJ2HSUKBWP2L0";
   const vnpUrl = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
-  const returnUrl = "http://localhost:3000/thanh-toan/vnpay-callback";
+  const returnUrl = "https://elearning-fe-eight.vercel.app/thanh-toan/vnpay-callback";
   
   const ipAddr = "127.0.0.1";
   
