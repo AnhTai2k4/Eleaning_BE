@@ -67,7 +67,9 @@ const getLesson = async (req, res) => {
     }
 
     let videoUrl = '';
-    if (foundLesson.videoType === 'youtube') {
+    if (foundLesson.videoId && foundLesson.videoId.startsWith('http')) {
+      videoUrl = foundLesson.videoId;
+    } else if (foundLesson.videoType === 'youtube') {
       videoUrl = `https://www.youtube.com/embed/${foundLesson.videoId}`;
     } else if (foundLesson.videoType === 'vimeo') {
       videoUrl = `https://player.vimeo.com/video/${foundLesson.videoId}`;

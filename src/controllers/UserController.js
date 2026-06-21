@@ -756,6 +756,34 @@ const logoutUser = async (req, res) => {
   }
 };
 
+const completeLesson = async (req, res) => {
+  try {
+    const { userId, lessonId } = req.body;
+    if (!userId || !lessonId) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+    
+    const User = require('../models/UserModel');
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (!user.completedLessons) {
+      user.completedLessons = [];
+    }
+
+    if (!user.completedLessons.includes(lessonId)) {
+      user.completedLessons.push(lessonId);
+      await user.save();
+    }
+
+    return res.status(200).json({ success: true, completedLessons: user.completedLessons });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   createUser,
   checkUsername,
@@ -777,4 +805,5 @@ module.exports = {
   refreshToken,
   logoutUser,
   googleLogin,
+  completeLesson,
 };

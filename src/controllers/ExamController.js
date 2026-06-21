@@ -82,6 +82,18 @@ const startAttempt = async (req, res) => {
     }
 
     let submission = await Submission.findOne({ examId, studentId, status: 'in_progress' });
+    
+    if (submission) {
+      const exam = await Exam.findById(examId);
+      if (exam) {
+        const elapsed = (Date.now() - new Date(submission.startedAt).getTime()) / 1000;
+        if (elapsed >= exam.duration * 60) {
+          await Submission.deleteOne({ _id: submission._id });
+          submission = null;
+        }
+      }
+    }
+
     if (!submission) {
       await Submission.deleteMany({ examId, studentId, status: 'completed' });
       submission = await Submission.create({

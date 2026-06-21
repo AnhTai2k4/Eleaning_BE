@@ -34,6 +34,8 @@ const userSchema = new mongoose.Schema(
     lockUntil: { type: Date, default: null },
     // Danh sách khóa học đã mua
     courseBuyed: [{ type: mongoose.Schema.Types.ObjectId, ref: "Course" }],
+    // Danh sách bài học đã hoàn thành
+    completedLessons: [{ type: String }],
   },
   {
     timestamps: true,

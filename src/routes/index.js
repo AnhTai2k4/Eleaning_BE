@@ -5,6 +5,7 @@ const PlanRoutes = require('./PlanRoutes')
 const PaymentRoutes = require('./PaymentRoutes')
 const ExamRoutes = require('./ExamRoutes')
 const DocumentRoutes = require('./DocumentRoutes')
+const CommentRoutes = require('./CommentRoutes')
 
 const routes= (app)=>{
     app.use('/api/user',UserRoutes)
@@ -14,6 +15,7 @@ const routes= (app)=>{
     app.use('/api/payment', PaymentRoutes)
     app.use('/api/exam', ExamRoutes)
     app.use('/api/document', DocumentRoutes)
+    app.use('/api/comment', CommentRoutes)
 }
 
 module.exports= routes

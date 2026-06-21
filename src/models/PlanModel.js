@@ -48,7 +48,8 @@ const DailyActionSchema = new Schema({
   date: { type: Date, required: true },
   tasks: [{
     aspect: { type: String, default: '' },
-    time: { type: String, default: '' },
+    startTime: { type: String, default: '' },
+    endTime: { type: String, default: '' },
     actualTime: { type: Number, default: 0 },
     action: { type: String, default: '' },
     score: { type: Number, default: 10 }

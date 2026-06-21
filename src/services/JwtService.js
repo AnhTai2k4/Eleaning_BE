@@ -58,7 +58,8 @@ const refreshTokenService = (token) => {
               isAdmin: dbUser.isAdmin,
               isTeacher: dbUser.isTeacher,
               phone: dbUser.phone || "",
-              courseBuyed: dbUser.courseBuyed || []
+              courseBuyed: dbUser.courseBuyed || [],
+              completedLessons: dbUser.completedLessons || []
             },
           },
         });

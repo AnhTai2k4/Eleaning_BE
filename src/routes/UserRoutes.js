@@ -36,6 +36,7 @@ router.delete("/delete/:id", authMiddleware, UserController.deleteUser);
 router.get("/getAllUser", authMiddleware, UserController.getAllUser);
 router.get("/getUser/:id", authUserMiddleware, UserController.getUser);
 router.post("/refreshToken", UserController.refreshToken);
+router.post("/complete-lesson", UserController.completeLesson);
 
 // WebAuthn credential management (multi-device)
 router.get(

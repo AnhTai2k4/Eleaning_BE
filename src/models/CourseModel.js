@@ -23,6 +23,7 @@ const CourseSchema = new Schema({
   grade: { type: Number, enum: [10, 11, 12], default: 12 },
   overview: { type: String, default: '' },
   description: { type: String, default: '' },
+  imageUrl: { type: String, default: '' },
   sections: [SectionSchema]
 }, { timestamps: true });
 
