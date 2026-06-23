@@ -1,4 +1,6 @@
 const Comment = require("../models/CommentModel");
+const NotificationService = require("../services/NotificationService");
+const User = require("../models/UserModel");
 
 const createComment = async (req, res) => {
   try {
@@ -24,6 +26,33 @@ const createComment = async (req, res) => {
       if (parentComment) {
         parentComment.replies.push(newComment._id);
         await parentComment.save();
+        
+        // Notify the parent comment author
+        if (parentComment.user.userId && parentComment.user.userId.toString() !== user.userId) {
+          await NotificationService.createNotification({
+            recipientId: parentComment.user.userId,
+            senderId: user.userId,
+            type: "comment_reply",
+            title: "Có người trả lời bình luận của bạn",
+            message: `${user.username || user.name || "Ai đó"} đã trả lời bình luận của bạn.`,
+            targetUrl: `/bai-hoc/${lessonId}?courseSlug=${req.query.courseSlug || req.body.courseSlug || ""}`
+          });
+        }
+      }
+    } else {
+      // Notify all teachers for a new root comment
+      const teachers = await User.find({ isTeacher: true });
+      for (const teacher of teachers) {
+        if (teacher._id.toString() !== user.userId) {
+          await NotificationService.createNotification({
+            recipientId: teacher._id,
+            senderId: user.userId,
+            type: "course_comment",
+            title: "Có học sinh bình luận mới",
+            message: `${user.username || user.name || "Học sinh"} đã bình luận trong bài học.`,
+            targetUrl: `/bai-hoc/${lessonId}?courseSlug=${req.query.courseSlug || req.body.courseSlug || ""}`
+          });
+        }
       }
     }
 

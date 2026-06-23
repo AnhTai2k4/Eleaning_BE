@@ -235,7 +235,7 @@ const getSubmissionsByStudent = async (req, res) => {
   try {
     const { studentId } = req.params;
     const submissions = await Submission.find({ studentId })
-      .populate('examId', 'title duration questionsCount type grade')
+      .populate('examId', 'title duration questionsCount type grade answers')
       .sort({ completedAt: -1 });
     res.status(200).json({ status: 'OK', data: submissions });
   } catch (err) {

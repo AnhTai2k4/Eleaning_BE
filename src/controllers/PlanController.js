@@ -1,5 +1,7 @@
 const { Goal, DailyAction, WeeklySummary } = require('../models/PlanModel');
 const axios = require('axios');
+const NotificationService = require('../services/NotificationService');
+const User = require('../models/UserModel');
 
 // ======================== GOAL (MỤC TIÊU THÁNG) ========================
 
@@ -60,13 +62,43 @@ const createOrUpdateDailyAction = async (req, res) => {
     });
 
     if (action) {
+      const isNewSubmission = action.status !== 'submitted' && status === 'submitted';
       action.tasks = tasks;
       action.reflection = reflection;
       action.selfScore = selfScore;
       action.status = status || action.status;
       await action.save();
+      
+      if (isNewSubmission) {
+        const student = await User.findById(studentId);
+        const teachers = await User.find({ isTeacher: true });
+        for (const teacher of teachers) {
+          await NotificationService.createNotification({
+            recipientId: teacher._id,
+            senderId: studentId,
+            type: "plan_submitted",
+            title: "Học sinh nộp kế hoạch mới",
+            message: `Học sinh ${student?.name || student?.username || ""} vừa nộp kế hoạch ngày.`,
+            targetUrl: `/quan-tri`
+          });
+        }
+      }
     } else {
       action = await DailyAction.create({ studentId, date: new Date(dateOnly), tasks, reflection, selfScore, status });
+      if (status === 'submitted') {
+        const student = await User.findById(studentId);
+        const teachers = await User.find({ isTeacher: true });
+        for (const teacher of teachers) {
+          await NotificationService.createNotification({
+            recipientId: teacher._id,
+            senderId: studentId,
+            type: "plan_submitted",
+            title: "Học sinh nộp kế hoạch mới",
+            message: `Học sinh ${student?.name || student?.username || ""} vừa nộp kế hoạch ngày.`,
+            targetUrl: `/quan-tri`
+          });
+        }
+      }
     }
 
     res.status(200).json({ status: 'OK', data: action });
@@ -147,6 +179,17 @@ const reviewDailyAction = async (req, res) => {
       teacherCommentAt: new Date(),
       status: 'reviewed'
     }, { new: true });
+    
+    if (action) {
+      await NotificationService.createNotification({
+        recipientId: action.studentId,
+        type: "plan_reviewed",
+        title: "Giáo viên đã nhận xét kế hoạch của bạn",
+        message: `Kế hoạch ngày của bạn đã được giáo viên nhận xét và chấm ${teacherScore} điểm.`,
+        targetUrl: `/so-tay`
+      });
+    }
+
     res.status(200).json({ status: 'OK', data: action });
   } catch (err) {
     res.status(500).json({ status: 'ERR', message: err.message });
