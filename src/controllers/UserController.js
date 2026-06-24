@@ -218,8 +218,8 @@ const signinUser = async (req, res) => {
       try {
         res.cookie("Refresh_token", Refresh_token, {
           httpOnly: true,
-          secure: false, // true khi deploy lên https
-          sameSite: "lax", // phải viết đúng sameSite
+          secure: true,
+          sameSite: "none",
           path: "/",
         });
         console.log("Tao cookie thanh cong ne");
@@ -343,8 +343,8 @@ const loginVerify = async (req, res) => {
       try {
         res.cookie("Refresh_token", Refresh_token, {
           httpOnly: true,
-          secure: false,
-          sameSite: "lax",
+          secure: true,
+          sameSite: "none",
           path: "/",
         });
       } catch (err) {
@@ -380,8 +380,8 @@ const loginVerifyTwoFactor = async (req, res) => {
       try {
         res.cookie("Refresh_token", Refresh_token, {
           httpOnly: true,
-          secure: false,
-          sameSite: "lax",
+          secure: true,
+          sameSite: "none",
           path: "/",
         });
       } catch (err) {
@@ -741,8 +741,9 @@ const logoutUser = async (req, res) => {
   try {
     res.clearCookie("Refresh_token", {
       httpOnly: true,
-      secure: false, // true khi deploy lên https
-      sameSite: "lax", // phải viết đúng sameSite
+      secure: true,
+      sameSite: "none",
+      path: "/",
     });
     return res.status(200).json({
       success: true,
