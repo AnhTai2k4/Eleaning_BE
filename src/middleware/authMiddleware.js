@@ -4,9 +4,10 @@ dotenv.config();
 
 const authMiddleware = (req, res, next) => {
   try {
-    console.log("req.headers.token:", req.headers.token);
+    const headerToken = req.headers.token || req.headers.authorization;
+    console.log("headerToken:", headerToken);
     
-    if (!req.headers.token) {
+    if (!headerToken) {
       return res.status(403).json({
         success: false,
         message: "Token không được cung cấp",
@@ -14,10 +15,10 @@ const authMiddleware = (req, res, next) => {
     }
 
     let token;
-    if (req.headers.token.startsWith("Bearer ")) {
-      token = req.headers.token.split(" ")[1];
+    if (headerToken.startsWith("Bearer ")) {
+      token = headerToken.split(" ")[1];
     } else {
-      token = req.headers.token;
+      token = headerToken;
     }
 
     if (!token) {
@@ -35,6 +36,7 @@ const authMiddleware = (req, res, next) => {
         });
       } else {
         console.log(user);
+        req.user = user;
         const { isAdmin } = user;
         if (!isAdmin) {
           return res.status(403).json({
@@ -57,9 +59,10 @@ const authMiddleware = (req, res, next) => {
 
 const authUserMiddleware = (req, res, next) => {
   try {
-    console.log("req.headers.token:", req.headers.token);
+    const headerToken = req.headers.token || req.headers.authorization;
+    console.log("headerToken:", headerToken);
     
-    if (!req.headers.token) {
+    if (!headerToken) {
       return res.status(403).json({
         success: false,
         message: "Token không được cung cấp",
@@ -68,10 +71,10 @@ const authUserMiddleware = (req, res, next) => {
 
     // Xử lý cả trường hợp "Bearer token" và chỉ "token"
     let token;
-    if (req.headers.token.startsWith("Bearer ")) {
-      token = req.headers.token.split(" ")[1];
+    if (headerToken.startsWith("Bearer ")) {
+      token = headerToken.split(" ")[1];
     } else {
-      token = req.headers.token;
+      token = headerToken;
     }
 
     if (!token) {
@@ -92,8 +95,9 @@ const authUserMiddleware = (req, res, next) => {
         });
       } else {
         console.log(user);
+        req.user = user;
         const { isAdmin } = user;
-        if (isAdmin || user.id == req.params.id) {
+        if (isAdmin || user.id == req.params.id || user._id == req.params.id) {
          next();
         } else {
            return res.status(403).json({
@@ -112,4 +116,48 @@ const authUserMiddleware = (req, res, next) => {
   }
 };
 
-module.exports = { authMiddleware, authUserMiddleware };
+const authGeneralMiddleware = (req, res, next) => {
+  try {
+    const headerToken = req.headers.token || req.headers.authorization;
+    if (!headerToken) {
+      return res.status(403).json({
+        success: false,
+        message: "Token không được cung cấp",
+      });
+    }
+
+    let token;
+    if (headerToken.startsWith("Bearer ")) {
+      token = headerToken.split(" ")[1];
+    } else {
+      token = headerToken;
+    }
+
+    if (!token) {
+      return res.status(403).json({
+        success: false,
+        message: "Token không hợp lệ",
+      });
+    }
+
+    jwt.verify(token, process.env.Access_token, function (err, user) {
+      if (err) {
+        return res.status(403).json({
+          success: false,
+          message: "Token không hợp lệ",
+        });
+      } else {
+        req.user = user;
+        next();
+      }
+    });
+  } catch (error) {
+    console.error("Error in authGeneralMiddleware:", error);
+    return res.status(403).json({
+      success: false,
+      message: "Token không hợp lệ",
+    });
+  }
+};
+
+module.exports = { authMiddleware, authUserMiddleware, authGeneralMiddleware };
