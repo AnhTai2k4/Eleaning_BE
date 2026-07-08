@@ -3,29 +3,56 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const authMiddleware = (req, res, next) => {
-  console.log(req.headers.token);
-  const token = req.headers.token.split(" ")[1];
+  try {
+    console.log("req.headers.token:", req.headers.token);
+    
+    if (!req.headers.token) {
+      return res.status(403).json({
+        success: false,
+        message: "Token không được cung cấp",
+      });
+    }
 
-  jwt.verify(token, process.env.Access_token, function (err, user) {
-    if (err) {
-      
+    let token;
+    if (req.headers.token.startsWith("Bearer ")) {
+      token = req.headers.token.split(" ")[1];
+    } else {
+      token = req.headers.token;
+    }
+
+    if (!token) {
       return res.status(403).json({
         success: false,
         message: "Token không hợp lệ",
       });
-    } else {
-      console.log(user);
-      const { isAdmin } = user;
-      if (!isAdmin) {
+    }
+
+    jwt.verify(token, process.env.Access_token, function (err, user) {
+      if (err) {
         return res.status(403).json({
           success: false,
-          message: "Bạn không có quyền xóa user",
+          message: "Token không hợp lệ",
         });
       } else {
-        next();
+        console.log(user);
+        const { isAdmin } = user;
+        if (!isAdmin) {
+          return res.status(403).json({
+            success: false,
+            message: "Bạn không có quyền truy cập",
+          });
+        } else {
+          next();
+        }
       }
-    }
-  });
+    });
+  } catch (error) {
+    console.error("Error in authMiddleware:", error);
+    return res.status(403).json({
+      success: false,
+      message: "Token không hợp lệ",
+    });
+  }
 };
 
 const authUserMiddleware = (req, res, next) => {

@@ -68,19 +68,28 @@ const googleLogin = async (req, res) => {
     }
 
     // 4. TẠO TOKEN CỦA RIÊNG HỆ THỐNG (JSON Web Token)
-    // Đây chính là cái access_token mà hệ thống VSTEP của em cấp để dùng cho các tính năng khác
-    const access_token = jwt.sign(
-      {
-        id: user._id,
-        isAdmin: user.isAdmin,
-        isTeacher: user.isTeacher,
-      },
-      process.env.JWT_SECRET || "chuoi_bi_mat_cua_vstep_ne", // Lấy từ file .env
-      { expiresIn: "1d" }, // Hạn sử dụng 1 ngày
-    );
+    const payload = {
+      id: user._id,
+      isAdmin: user.isAdmin,
+      isTeacher: user.isTeacher,
+      username: user.username,
+      email: user.email,
+      phone: user.phone || ""
+    };
+    const access_token = await JwtService.createAccessToken(payload);
+    const refresh_token = await JwtService.createRefreshToken(payload);
 
-    // Tùy chọn: Em có thể tạo thêm refresh_token ở đây nếu cần thiết
-    // const refresh_token = jwt.sign(..., { expiresIn: '365d' });
+    try {
+      res.cookie("Refresh_token", refresh_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        path: "/",
+      });
+      console.log("Tao cookie Google Login thanh cong ne");
+    } catch (err) {
+      console.log("Khong tao duoc cookie Google ne", err);
+    }
 
     // 5. TRẢ KẾT QUẢ VỀ CHO FRONTEND
     // Cấu trúc này khớp hoàn toàn với những gì Frontend lúc nãy đang "hứng"

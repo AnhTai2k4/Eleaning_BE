@@ -221,6 +221,66 @@ const submitAttempt = async (req, res) => {
 const getSubmissionsByExam = async (req, res) => {
   try {
     const { examId } = req.params;
+    const exam = await Exam.findById(examId);
+
+    // Tự động chốt bài và chấm điểm nếu học sinh bỏ dở (out ra) quá thời gian làm bài + 5 phút đệm
+    if (exam) {
+      const inProgressSubs = await Submission.find({ examId, status: 'in_progress' });
+      const durationMs = (exam.duration || 45) * 60 * 1000;
+      const now = Date.now();
+
+      for (let sub of inProgressSubs) {
+        if (now - new Date(sub.startedAt).getTime() >= durationMs + 5 * 60 * 1000) {
+          let score = 0;
+          const studentAnswers = sub.answers || new Map();
+          const isThptMathFormat = exam.answers && (exam.answers.has('13_a') || exam.answers.has('17'));
+
+          if (isThptMathFormat) {
+            for (let q = 1; q <= 12; q++) {
+              const key = String(q);
+              const sAns = studentAnswers.get ? studentAnswers.get(key) : studentAnswers[key];
+              if (sAns && sAns === exam.answers.get(key)) score += 0.25;
+            }
+            for (let q = 13; q <= 16; q++) {
+              let correctSubCount = 0;
+              ['a', 'b', 'c', 'd'].forEach((subKey) => {
+                const key = `${q}_${subKey}`;
+                const sAns = studentAnswers.get ? studentAnswers.get(key) : studentAnswers[key];
+                if (sAns && sAns === exam.answers.get(key)) correctSubCount += 1;
+              });
+              if (correctSubCount === 1) score += 0.1;
+              else if (correctSubCount === 2) score += 0.25;
+              else if (correctSubCount === 3) score += 0.5;
+              else if (correctSubCount === 4) score += 1.0;
+            }
+            for (let q = 17; q <= 22; q++) {
+              const key = String(q);
+              const sAns = studentAnswers.get ? studentAnswers.get(key) : studentAnswers[key];
+              const studentAns = sAns ? sAns.toString().trim().toLowerCase() : '';
+              const correctAns = exam.answers.get(key) ? exam.answers.get(key).toString().trim().toLowerCase() : '';
+              if (studentAns && studentAns === correctAns) score += 0.5;
+            }
+          } else if (exam.answers) {
+            let totalKeys = 0;
+            let correctKeys = 0;
+            exam.answers.forEach((correctVal, key) => {
+              totalKeys += 1;
+              const sAns = studentAnswers.get ? studentAnswers.get(key) : studentAnswers[key];
+              const studentVal = sAns ? sAns.toString().trim().toLowerCase() : '';
+              const normCorrectVal = correctVal ? correctVal.toString().trim().toLowerCase() : '';
+              if (studentVal === normCorrectVal) correctKeys += 1;
+            });
+            score = totalKeys > 0 ? (correctKeys / totalKeys) * 10 : 0;
+          }
+
+          sub.score = Math.round(score * 100) / 100;
+          sub.status = 'completed';
+          sub.completedAt = new Date(new Date(sub.startedAt).getTime() + durationMs);
+          await sub.save();
+        }
+      }
+    }
+
     const submissions = await Submission.find({ examId })
       .populate('studentId', 'name username email')
       .sort({ score: -1 });
@@ -243,6 +303,17 @@ const getSubmissionsByStudent = async (req, res) => {
   }
 };
 
+// 11. Xóa bài làm (cho phép thi lại)
+const deleteSubmission = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await Submission.findByIdAndDelete(id);
+    res.status(200).json({ status: 'OK', message: 'Xóa bài làm thành công' });
+  } catch (err) {
+    res.status(500).json({ status: 'ERR', message: err.message });
+  }
+};
+
 module.exports = {
   createExam,
   updateExam,
@@ -253,5 +324,6 @@ module.exports = {
   saveAttemptProgress,
   submitAttempt,
   getSubmissionsByExam,
-  getSubmissionsByStudent
+  getSubmissionsByStudent,
+  deleteSubmission
 };

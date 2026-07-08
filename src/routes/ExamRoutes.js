@@ -50,5 +50,6 @@ router.post('/save-progress', ExamController.saveAttemptProgress);
 router.post('/submit', ExamController.submitAttempt);
 router.get('/submissions/:examId', ExamController.getSubmissionsByExam);
 router.get('/student-submissions/:studentId', ExamController.getSubmissionsByStudent);
+router.delete('/submission/:id', ExamController.deleteSubmission);
 
 module.exports = router;
