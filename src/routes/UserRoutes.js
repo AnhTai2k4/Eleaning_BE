@@ -38,6 +38,12 @@ router.get("/getUser/:id", authUserMiddleware, UserController.getUser);
 router.post("/refreshToken", UserController.refreshToken);
 router.post("/complete-lesson", UserController.completeLesson);
 
+// Quên mật khẩu
+router.post("/forgot-password/check-user", UserController.checkUserForgotPassword);
+router.post("/forgot-password/send-otp", UserController.sendOtpForgotPassword);
+router.post("/forgot-password/verify-otp", UserController.verifyOtpForgotPassword);
+router.post("/forgot-password/reset-password", UserController.resetPasswordWithOtp);
+
 // WebAuthn credential management (multi-device)
 router.get(
   "/credentials/:id",

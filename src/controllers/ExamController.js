@@ -1,4 +1,25 @@
 const { Exam, Submission } = require('../models/ExamModel');
+const jwt = require('jsonwebtoken');
+const User = require('../models/UserModel');
+
+// Helper check quyền Quản trị viên / Giáo viên
+const isStaffUser = async (req) => {
+  try {
+    const tokenHeader = req.headers.token || req.headers.authorization;
+    if (tokenHeader) {
+      const token = tokenHeader.startsWith('Bearer ') ? tokenHeader.split(' ')[1] : tokenHeader;
+      const decoded = jwt.verify(token, process.env.Access_token || process.env.ACCESS_TOKEN_SECRET || 'access_token');
+      if (decoded && (decoded.isAdmin || decoded.isTeacher)) return true;
+      if (decoded && decoded.id) {
+        const user = await User.findById(decoded.id);
+        if (user && (user.isAdmin || user.isTeacher)) return true;
+      }
+    }
+  } catch (err) {
+    return false;
+  }
+  return false;
+};
 
 // 1. Giáo viên tạo đề thi
 const createExam = async (req, res) => {
@@ -49,17 +70,25 @@ const deleteExam = async (req, res) => {
   }
 };
 
-// 4. Lấy tất cả đề thi/bài tập
+// 4. Lấy tất cả đề thi/bài tập (Ẩn đáp án đối với học sinh, chỉ hiển thị cho Giáo viên/Admin để quản lý)
 const getAllExams = async (req, res) => {
   try {
     const exams = await Exam.find().sort({ createdAt: -1 });
-    res.status(200).json({ status: 'OK', data: exams });
+    const staff = await isStaffUser(req);
+    const result = exams.map(ex => {
+      const obj = ex.toObject();
+      if (!staff) {
+        delete obj.answers;
+      }
+      return obj;
+    });
+    res.status(200).json({ status: 'OK', data: result });
   } catch (err) {
     res.status(500).json({ status: 'ERR', message: err.message });
   }
 };
 
-// 5. Chi tiết đề thi
+// 5. Chi tiết đề thi (Ẩn đáp án đối với học sinh, chỉ hiển thị cho Giáo viên/Admin)
 const getExamById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -67,7 +96,12 @@ const getExamById = async (req, res) => {
     if (!exam) {
       return res.status(404).json({ status: 'ERR', message: 'Không tìm thấy đề thi' });
     }
-    res.status(200).json({ status: 'OK', data: exam });
+    const obj = exam.toObject();
+    const staff = await isStaffUser(req);
+    if (!staff) {
+      delete obj.answers;
+    }
+    res.status(200).json({ status: 'OK', data: obj });
   } catch (err) {
     res.status(500).json({ status: 'ERR', message: err.message });
   }
@@ -198,6 +232,13 @@ const submitAttempt = async (req, res) => {
       { new: true }
     );
 
+    const fullAnswers = {};
+    if (exam.answers && typeof exam.answers.forEach === 'function') {
+      exam.answers.forEach((val, key) => { fullAnswers[key] = val; });
+    } else if (exam.answers && typeof exam.answers === 'object') {
+      Object.assign(fullAnswers, exam.answers);
+    }
+
     if (!submission) {
       const fallbackSub = await Submission.create({
         examId,
@@ -208,10 +249,10 @@ const submitAttempt = async (req, res) => {
         startedAt: new Date(Date.now() - exam.duration * 60 * 1000),
         completedAt: new Date()
       });
-      return res.status(200).json({ status: 'OK', data: fallbackSub });
+      return res.status(200).json({ status: 'OK', data: fallbackSub, correctAnswers: fullAnswers });
     }
 
-    res.status(200).json({ status: 'OK', data: submission });
+    res.status(200).json({ status: 'OK', data: submission, correctAnswers: fullAnswers });
   } catch (err) {
     res.status(500).json({ status: 'ERR', message: err.message });
   }
@@ -284,7 +325,9 @@ const getSubmissionsByExam = async (req, res) => {
     const submissions = await Submission.find({ examId })
       .populate('studentId', 'name username email')
       .sort({ score: -1 });
-    res.status(200).json({ status: 'OK', data: submissions });
+
+    const formatted = submissions.map(sub => sub.toObject({ flattenMaps: true }));
+    res.status(200).json({ status: 'OK', data: formatted });
   } catch (err) {
     res.status(500).json({ status: 'ERR', message: err.message });
   }
@@ -297,7 +340,23 @@ const getSubmissionsByStudent = async (req, res) => {
     const submissions = await Submission.find({ studentId })
       .populate('examId', 'title duration questionsCount type grade answers')
       .sort({ completedAt: -1 });
-    res.status(200).json({ status: 'OK', data: submissions });
+
+    const formatted = submissions.map(sub => {
+      const obj = sub.toObject({ flattenMaps: true });
+      if (obj.examId && obj.examId.answers) {
+        const flatAns = {};
+        if (obj.examId.answers instanceof Map || typeof obj.examId.answers.forEach === 'function') {
+          obj.examId.answers.forEach((val, key) => { flatAns[key] = val; });
+          obj.examId.answers = flatAns;
+        } else if (typeof obj.examId.answers === 'object') {
+          Object.assign(flatAns, obj.examId.answers);
+          obj.examId.answers = flatAns;
+        }
+      }
+      return obj;
+    });
+
+    res.status(200).json({ status: 'OK', data: formatted });
   } catch (err) {
     res.status(500).json({ status: 'ERR', message: err.message });
   }

@@ -794,6 +794,73 @@ const completeLesson = async (req, res) => {
   }
 };
 
+const checkUserForgotPassword = async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username) {
+      return res.status(400).json({ success: false, message: "Vui lòng nhập tên đăng nhập!" });
+    }
+    const result = await UserService.checkUserForgotPassword({ username });
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.message });
+    }
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const sendOtpForgotPassword = async (req, res) => {
+  try {
+    const { username, method } = req.body;
+    if (!username || !method) {
+      return res.status(400).json({ success: false, message: "Thiếu thông tin yêu cầu!" });
+    }
+    const result = await UserService.sendOtpForgotPassword({ username, method });
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.message });
+    }
+    return res.status(200).json({ success: true, message: result.message, devOtp: result.devOtp });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const verifyOtpForgotPassword = async (req, res) => {
+  try {
+    const { username, otp } = req.body;
+    if (!username || !otp) {
+      return res.status(400).json({ success: false, message: "Vui lòng nhập đầy đủ mã OTP!" });
+    }
+    const result = await UserService.verifyOtpForgotPassword({ username, otp });
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.message });
+    }
+    return res.status(200).json({ success: true, message: result.message });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const resetPasswordWithOtp = async (req, res) => {
+  try {
+    const { username, otp, newPassword } = req.body;
+    if (!username || !otp || !newPassword) {
+      return res.status(400).json({ success: false, message: "Vui lòng nhập đầy đủ thông tin mật khẩu mới!" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: "Mật khẩu mới phải có ít nhất 6 ký tự!" });
+    }
+    const result = await UserService.resetPasswordWithOtp({ username, otp, newPassword });
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.message });
+    }
+    return res.status(200).json({ success: true, message: result.message });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   createUser,
   checkUsername,
@@ -816,4 +883,8 @@ module.exports = {
   logoutUser,
   googleLogin,
   completeLesson,
+  checkUserForgotPassword,
+  sendOtpForgotPassword,
+  verifyOtpForgotPassword,
+  resetPasswordWithOtp,
 };

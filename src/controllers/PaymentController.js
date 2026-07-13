@@ -3,6 +3,7 @@ const axios = require("axios");
 const Course = require("../models/CourseModel");
 const User = require("../models/UserModel");
 const Transaction = require("../models/TransactionModel");
+const NotificationService = require("../services/NotificationService");
 
 
 
@@ -127,6 +128,24 @@ const verifyMomoPayment = async (req, res) => {
             orderId: orderId || `${Date.now()}`
           });
 
+          // Gửi thông báo cho toàn bộ Admin khi có thanh toán thành công
+          try {
+            const admins = await User.find({ isAdmin: true });
+            const adminIds = [...new Set(admins.map(a => a._id.toString()))];
+            for (const adminId of adminIds) {
+              await NotificationService.createNotification({
+                recipientId: adminId,
+                senderId: userId,
+                type: "payment_success",
+                title: "Thanh toán khóa học mới",
+                message: `Học sinh ${user?.name || user?.username || "Một học sinh"} vừa thanh toán thành công khóa học "${course ? course.title : ""}".`,
+                targetUrl: `/quan-tri?tab=transactions`
+              });
+            }
+          } catch (notifErr) {
+            console.error("Lỗi gửi thông báo thanh toán cho Admin:", notifErr);
+          }
+
           return res.status(200).json({
             success: true,
             message: "Thanh toán MoMo thành công",
@@ -176,6 +195,24 @@ const mockPaymentSuccess = async (req, res) => {
       status: "Thành công",
       orderId: `MOCK-${Date.now()}`
     });
+
+    // Gửi thông báo cho toàn bộ Admin khi có thanh toán thành công
+    try {
+      const admins = await User.find({ isAdmin: true });
+      const adminIds = [...new Set(admins.map(a => a._id.toString()))];
+      for (const adminId of adminIds) {
+        await NotificationService.createNotification({
+          recipientId: adminId,
+          senderId: userId,
+          type: "payment_success",
+          title: "Thanh toán khóa học mới",
+          message: `Học sinh ${user?.name || user?.username || "Một học sinh"} vừa thanh toán thành công khóa học "${course ? course.title : ""}".`,
+          targetUrl: `/quan-tri?tab=transactions`
+        });
+      }
+    } catch (notifErr) {
+      console.error("Lỗi gửi thông báo thanh toán cho Admin:", notifErr);
+    }
 
     return res.status(200).json({
       success: true,

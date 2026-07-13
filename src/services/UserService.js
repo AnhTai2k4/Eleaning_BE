@@ -1,6 +1,8 @@
 const User = require("../models/UserModel");
 const bcrypt = require("bcrypt");
 const { createAccessToken, createRefreshToken } = require("./JwtService");
+const nodemailer = require("nodemailer");
+const axios = require("axios");
 
 // const ensureCredentialArray = async (user) => {
 //   if (!user) return null;
@@ -111,13 +113,24 @@ const signinUser = async ({ username, password }) => {
     if (isCheck.lockUntil && isCheck.lockUntil > new Date()) {
       const remainingMs = isCheck.lockUntil.getTime() - Date.now();
       const remainingSec = Math.ceil(remainingMs / 1000);
+      const remainingMin = Math.ceil(remainingSec / 60);
       return {
         success: false,
-        message: `Tài khoản đang bị khóa, vui lòng thử lại sau ${remainingSec} giây`,
+        message:
+          remainingSec > 60
+            ? `Tài khoản đang bị khóa, vui lòng thử lại sau ${remainingMin} phút (${remainingSec} giây)`
+            : `Tài khoản đang bị khóa, vui lòng thử lại sau ${remainingSec} giây`,
       };
     }
 
-    const comparePassword = await bcrypt.compare(password, isCheck.password);
+    let comparePassword = await bcrypt.compare(password, isCheck.password);
+    // Hỗ trợ tự động khắc phục: nếu mật khẩu trong DB đang bị lưu bản gốc (plaintext),
+    // kiểm tra khớp trực tiếp và tự động mã hóa lại ngay trong DB!
+    if (!comparePassword && isCheck.password === password) {
+      comparePassword = true;
+      isCheck.password = bcrypt.hashSync(password, 10);
+      await isCheck.save();
+    }
     console.log(comparePassword);
     if (comparePassword) {
       // Reset đếm sai & mở khóa nếu đăng nhập đúng
@@ -172,8 +185,8 @@ const signinUser = async ({ username, password }) => {
       if (newAttempts >= 10) {
         // Sai >= 10 lần liên tiếp -> khóa 5 phút
         lockMinutes = 5;
-      } else if (newAttempts >= 3) {
-        // Sai >= 3 lần liên tiếp -> khóa 1 phút
+      } else if (newAttempts >= 5) {
+        // Sai >= 5 lần liên tiếp -> khóa 1 phút
         lockMinutes = 1;
       }
 
@@ -190,7 +203,7 @@ const signinUser = async ({ username, password }) => {
         message:
           lockMinutes > 0
             ? `Sai mật khẩu quá nhiều lần. Tài khoản bị khóa trong ${lockMinutes} phút`
-            : "Mat khau khong hop le",
+            : `Mật khẩu không chính xác (đã sai ${newAttempts}/5 lần trước khi khóa 1 phút)`,
       };
     }
   } catch (e) {
@@ -575,6 +588,13 @@ const updateUser = async ({ id, data }) => {
       };
     }
 
+    if (data && data.password) {
+      // Nếu mật khẩu mới chưa được mã hóa bcrypt (bắt đầu bằng $2a$, $2b$, hoặc $2y$)
+      if (!data.password.startsWith("$2a$") && !data.password.startsWith("$2b$") && !data.password.startsWith("$2y$")) {
+        data.password = bcrypt.hashSync(data.password, 10);
+      }
+    }
+
     const updateUser = await User.findByIdAndUpdate(id, data, { new: true });
     return {
       success: true,
@@ -647,14 +667,246 @@ const getUser = async (id) => {
   }
 };
 
+// Quên mật khẩu: Bước 1 - Kiểm tra user có email hay SĐT
+const checkUserForgotPassword = async ({ username }) => {
+  try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return { success: false, message: "Tên đăng nhập không tồn tại trong hệ thống!" };
+    }
+
+    const hasEmail = Boolean(user.email && user.email.trim() !== "");
+    const hasPhone = Boolean(user.phone && user.phone.trim() !== "");
+
+    if (!hasEmail && !hasPhone) {
+      return { success: false, message: "Tài khoản này chưa liên kết Email hay Số điện thoại, không thể khôi phục mật khẩu tự động!" };
+    }
+
+    // Mask email (ví dụ: t***@gmail.com)
+    let emailMasked = "";
+    if (hasEmail) {
+      const parts = user.email.split("@");
+      if (parts.length === 2) {
+        const namePart = parts[0];
+        const maskedName = namePart.length > 2 ? namePart[0] + "***" + namePart.slice(-1) : namePart[0] + "***";
+        emailMasked = `${maskedName}@${parts[1]}`;
+      } else {
+        emailMasked = user.email;
+      }
+    }
+
+    // Mask phone (ví dụ: 098***123)
+    let phoneMasked = "";
+    if (hasPhone) {
+      const p = user.phone;
+      phoneMasked = p.length > 6 ? p.slice(0, 3) + "***" + p.slice(-3) : p;
+    }
+
+    return {
+      success: true,
+      data: {
+        username: user.username,
+        hasEmail,
+        emailMasked,
+        hasPhone,
+        phoneMasked,
+      },
+    };
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+};
+
+// Quên mật khẩu: Bước 2 - Gửi OTP (Thật tới Email & Số điện thoại)
+const sendOtpForgotPassword = async ({ username, method }) => {
+  try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return { success: false, message: "Tài khoản không tồn tại!" };
+    }
+
+    // Tạo OTP 6 số
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 phút
+
+    user.resetOtp = {
+      code: otpCode,
+      expiresAt: expiresAt,
+      method: method,
+    };
+    await user.save();
+
+    console.log(`[FORGOT PASSWORD OTP] Username: ${username} | Method: ${method} | OTP Code: ${otpCode}`);
+
+    // --- 1. GỬI OTP QUA EMAIL (THẬT) ---
+    if (method === "email") {
+      const emailUser = process.env.EMAIL_USER || process.env.SMTP_USER;
+      const emailPass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
+      const emailHost = process.env.SMTP_HOST || "smtp.gmail.com";
+      const emailPort = process.env.SMTP_PORT || 465;
+
+      if (emailUser && emailPass) {
+        try {
+          const transporter = nodemailer.createTransport({
+            host: emailHost,
+            port: Number(emailPort),
+            secure: Number(emailPort) === 465, // true với 465, false với các cổng khác
+            auth: {
+              user: emailUser,
+              pass: emailPass,
+            },
+          });
+
+          const mailOptions = {
+            from: `"Hệ thống E-Learning" <${emailUser}>`,
+            to: user.email,
+            subject: "[E-Learning] Mã OTP Khôi phục Mật khẩu",
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                <div style="background: linear-gradient(135deg, #f15a24 0%, #d94e1d 100%); padding: 24px; text-align: center; color: white;">
+                  <h1 style="margin: 0; font-size: 24px; font-weight: bold;">HỆ THỐNG E-LEARNING</h1>
+                  <p style="margin: 8px 0 0 0; font-size: 14px; opacity: 0.9;">Khôi phục mật khẩu tài khoản</p>
+                </div>
+                <div style="padding: 32px 24px; background-color: #ffffff; color: #334155;">
+                  <p style="font-size: 16px; margin-top: 0;">Xin chào <strong>${user.name || user.username}</strong>,</p>
+                  <p style="font-size: 15px; line-height: 1.6;">Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản <strong style="color: #f15a24;">${user.username}</strong> của bạn.</p>
+                  <p style="font-size: 15px; line-height: 1.6;">Dưới đây là mã OTP xác thực của bạn. Mã này có hiệu lực trong vòng <strong>5 phút</strong>:</p>
+                  
+                  <div style="background-color: #fff7ed; border: 2px dashed #fdba74; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
+                    <span style="font-family: monospace; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #ea580c;">${otpCode}</span>
+                  </div>
+                  
+                  <p style="font-size: 13px; color: #64748b; margin-bottom: 0;"><em>* Lưu ý: Không chia sẻ mã OTP này cho bất kỳ ai, kể cả nhân viên hỗ trợ để tránh rủi ro mất tài khoản.</em></p>
+                </div>
+                <div style="background-color: #f8fafc; padding: 16px 24px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+                  <p style="margin: 0;">© 2026 E-Learning Platform. All rights reserved.</p>
+                </div>
+              </div>
+            `,
+          };
+
+          await transporter.sendMail(mailOptions);
+          console.log(`[REAL EMAIL SENT] Đã gửi mail OTP thành công tới: ${user.email}`);
+        } catch (mailErr) {
+          console.error(`[REAL EMAIL ERROR] Lỗi gửi mail tới ${user.email}:`, mailErr.message);
+        }
+      } else {
+        console.log(`[NOTE] Để gửi Email thật, cần cấu hình EMAIL_USER và EMAIL_PASS trong file .env`);
+      }
+    }
+
+    // --- 2. GỬI OTP QUA SỐ ĐIỆN THOẠI / SMS (THẬT) ---
+    if (method === "phone") {
+      // Ưu tiên 1: Twilio SMS API (Quốc tế & VN)
+      if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
+        try {
+          const twilio = require("twilio")(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+          let formattedPhone = user.phone;
+          if (formattedPhone.startsWith("0")) {
+            formattedPhone = "+84" + formattedPhone.slice(1);
+          }
+          await twilio.messages.create({
+            body: `[E-Learning] Ma OTP khoi phuc mat khau cua ban la: ${otpCode}. Hieu luc trong 5 phut.`,
+            from: process.env.TWILIO_PHONE_NUMBER,
+            to: formattedPhone,
+          });
+          console.log(`[REAL SMS SENT] Đã gửi SMS Twilio thành công tới: ${formattedPhone}`);
+        } catch (smsErr) {
+          console.error(`[TWILIO SMS ERROR] Lỗi gửi SMS tới ${user.phone}:`, smsErr.message);
+        }
+      }
+      // Ưu tiên 2: SpeedSMS (Gateway phổ biến tại Việt Nam)
+      else if (process.env.SPEEDSMS_ACCESS_TOKEN) {
+        try {
+          const url = `https://api.speedsms.vn/index.php/sms/send?access-token=${process.env.SPEEDSMS_ACCESS_TOKEN}&to=${user.phone}&content=${encodeURIComponent(`[E-Learning] Ma OTP khoi phuc mat khau cua ban la ${otpCode}. Hieu luc 5 phut.`)}&type=4`;
+          const resSms = await axios.get(url);
+          console.log(`[REAL SMS SENT] SpeedSMS Response tới ${user.phone}:`, resSms.data);
+        } catch (smsErr) {
+          console.error(`[SPEEDSMS ERROR] Lỗi gửi SMS SpeedSMS tới ${user.phone}:`, smsErr.message);
+        }
+      } else {
+        console.log(`[NOTE] Để gửi SMS thật, cần cấu hình TWILIO_* hoặc SPEEDSMS_ACCESS_TOKEN trong file .env`);
+      }
+    }
+
+    return {
+      success: true,
+      message: method === 'email' ? "Mã OTP đã được gửi về Email của bạn" : "Mã OTP đã được gửi về Số điện thoại của bạn",
+      devOtp: otpCode, // Trả kèm devOtp để đảm bảo test luôn mượt mà trong lúc cấu hình
+    };
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+};
+
+// Quên mật khẩu: Bước 3 - Xác minh OTP
+const verifyOtpForgotPassword = async ({ username, otp }) => {
+  try {
+    const user = await User.findOne({ username });
+    if (!user || !user.resetOtp || !user.resetOtp.code) {
+      return { success: false, message: "Mã OTP không hợp lệ hoặc đã hết hạn!" };
+    }
+
+    if (user.resetOtp.expiresAt < new Date()) {
+      return { success: false, message: "Mã OTP đã hết hạn, vui lòng gửi lại mã mới!" };
+    }
+
+    if (user.resetOtp.code !== String(otp).trim()) {
+      return { success: false, message: "Mã OTP không chính xác!" };
+    }
+
+    return {
+      success: true,
+      message: "Xác minh OTP thành công!",
+    };
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+};
+
+// Quên mật khẩu: Bước 4 - Đặt lại mật khẩu mới
+const resetPasswordWithOtp = async ({ username, otp, newPassword }) => {
+  try {
+    const user = await User.findOne({ username });
+    if (!user || !user.resetOtp || !user.resetOtp.code) {
+      return { success: false, message: "Phiên đặt lại mật khẩu không hợp lệ, vui lòng thực hiện lại từ đầu!" };
+    }
+
+    if (user.resetOtp.expiresAt < new Date()) {
+      return { success: false, message: "Mã OTP đã hết hạn, vui lòng thực hiện lại!" };
+    }
+
+    if (user.resetOtp.code !== String(otp).trim()) {
+      return { success: false, message: "Mã OTP xác thực không đúng!" };
+    }
+
+    // Mã hóa mật khẩu mới
+    user.password = bcrypt.hashSync(newPassword, 10);
+    // Xóa OTP & mở khóa tài khoản nếu đang bị khóa
+    user.resetOtp = { code: null, expiresAt: null, method: null };
+    user.failedLoginAttempts = 0;
+    user.lockUntil = null;
+
+    await user.save();
+
+    return {
+      success: true,
+      message: "Đặt lại mật khẩu thành công! Bạn có thể đăng nhập ngay bây giờ.",
+    };
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+};
+
 module.exports = {
   createUser,
- 
   signinUser,
-
-
   updateUser,
   deleteUser,
   getAllUser,
   getUser,
+  checkUserForgotPassword,
+  sendOtpForgotPassword,
+  verifyOtpForgotPassword,
+  resetPasswordWithOtp,
 };

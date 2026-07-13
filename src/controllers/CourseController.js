@@ -42,18 +42,32 @@ const getCourse = async (req, res) => {
 // 4. Get lesson inside a course
 const getLesson = async (req, res) => {
   try {
-    const { courseSlug, lessonSlug } = req.params;
-    const course = await Course.findOne({ slug: courseSlug });
+    let { courseSlug, lessonSlug } = req.params;
+    if (!lessonSlug) {
+      lessonSlug = courseSlug;
+      courseSlug = null;
+    }
+
+    let course = courseSlug ? await Course.findOne({ slug: courseSlug }) : null;
+    let foundLesson = null;
+    let foundSectionTitle = '';
+
+    if (!course) {
+      course = await Course.findOne({
+        $or: [
+          { "sections.lessons.slug": lessonSlug },
+          { "sections.lessons._id": lessonSlug }
+        ]
+      });
+    }
+
     if (!course) {
       return res.status(404).json({ status: 'ERR', message: 'Không tìm thấy khóa học' });
     }
 
-    let foundLesson = null;
-    let foundSectionTitle = '';
-
     if (course.sections) {
       for (const section of course.sections) {
-        const les = section.lessons.find(l => l.slug === lessonSlug);
+        const les = section.lessons.find(l => l.slug === lessonSlug || (l._id && l._id.toString() === lessonSlug));
         if (les) {
           foundLesson = les;
           foundSectionTitle = section.sectionTitle;
@@ -79,8 +93,38 @@ const getLesson = async (req, res) => {
       videoUrl = `https://www.youtube.com/embed/${foundLesson.videoId}`;
     }
 
+    let isAuthorized = foundLesson.isFree || false;
+    if (!isAuthorized) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const User = require('../models/UserModel');
+        const tokenHeader = req.headers.token || req.headers.authorization;
+        if (tokenHeader) {
+          const token = tokenHeader.startsWith('Bearer ') ? tokenHeader.split(' ')[1] : tokenHeader;
+          const decoded = jwt.verify(token, process.env.Access_token || process.env.ACCESS_TOKEN_SECRET || 'access_token');
+          if (decoded && (decoded.isAdmin || decoded.isTeacher)) {
+            isAuthorized = true;
+          } else if (decoded && decoded.id) {
+            const user = await User.findById(decoded.id);
+            if (user && (user.isAdmin || user.isTeacher)) {
+              isAuthorized = true;
+            } else if (user && user.courseBuyed && (user.courseBuyed.includes(course._id) || user.courseBuyed.includes(course.slug))) {
+              isAuthorized = true;
+            }
+          }
+        }
+      } catch (e) {
+        // Token invalid or unverified
+      }
+    }
+
+    if (!isAuthorized) {
+      videoUrl = '';
+    }
+
     const responseData = {
       ...foundLesson.toObject(),
+      courseSlug: course.slug,
       courseTitle: course.title,
       sectionTitle: foundSectionTitle,
       videoUrl

@@ -32,6 +32,12 @@ const userSchema = new mongoose.Schema(
     // Chống brute-force / lock tài khoản
     failedLoginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date, default: null },
+    // OTP cho tính năng Quên mật khẩu
+    resetOtp: {
+      code: { type: String, default: null },
+      expiresAt: { type: Date, default: null },
+      method: { type: String, default: null },
+    },
     // Danh sách khóa học đã mua
     courseBuyed: [{ type: mongoose.Schema.Types.ObjectId, ref: "Course" }],
     // Danh sách bài học đã hoàn thành

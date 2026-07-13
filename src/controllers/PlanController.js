@@ -71,7 +71,7 @@ const createOrUpdateDailyAction = async (req, res) => {
       
       if (isNewSubmission) {
         const student = await User.findById(studentId);
-        const teachers = await User.find({ isTeacher: true });
+        const teachers = await User.find({ $or: [{ isTeacher: true }, { isAdmin: true }] });
         for (const teacher of teachers) {
           await NotificationService.createNotification({
             recipientId: teacher._id,
@@ -87,7 +87,7 @@ const createOrUpdateDailyAction = async (req, res) => {
       action = await DailyAction.create({ studentId, date: new Date(dateOnly), tasks, reflection, selfScore, status });
       if (status === 'submitted') {
         const student = await User.findById(studentId);
-        const teachers = await User.find({ isTeacher: true });
+        const teachers = await User.find({ $or: [{ isTeacher: true }, { isAdmin: true }] });
         for (const teacher of teachers) {
           await NotificationService.createNotification({
             recipientId: teacher._id,
@@ -238,10 +238,9 @@ const generateAIComment = async (req, res) => {
     const totalActualTime = tasks?.reduce((sum, t) => sum + (Number(t.actualTime) || 0), 0) || 0;
     const totalPlannedTime = tasks?.reduce((sum, t) => sum + (Number(t.time) || 0), 0) || 0;
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      // Fallback to local rule-based comment if no API key is provided
-      let fallbackComment = `Nhận xét kế hoạch ngày ${new Date(date).toLocaleDateString('vi-VN')}:\n`;
+    // Hàm tạo nhận xét dự phòng thông minh (Rule-based Fallback)
+    const getFallbackComment = () => {
+      let fallbackComment = `Nhận xét kế hoạch ngày ${new Date(date || Date.now()).toLocaleDateString('vi-VN')}:\n`;
       fallbackComment += `- Học sinh hoàn thành ${taskCount} công việc chính.\n`;
       fallbackComment += `- Học tập thực tế: ${totalActualTime} giờ (dự kiến: ${totalPlannedTime} giờ).\n`;
       if (totalActualTime >= totalPlannedTime) {
@@ -255,10 +254,15 @@ const generateAIComment = async (req, res) => {
       if (reflection) {
         fallbackComment += `Rút kinh nghiệm tốt: "${reflection}".`;
       }
-      return res.status(200).json({ status: 'OK', data: fallbackComment });
+      return fallbackComment.trim();
+    };
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(200).json({ status: 'OK', data: getFallbackComment() });
     }
 
-    const prompt = `Bạn là một trợ lý AI giáo dục thông thái (AI Co-pilot). Hãy nhận xét kế hoạch tự học trong ngày của học sinh bằng tiếng Việt ngắn gọn trong 3-4 dòng,hãy nhận xét như 1 giáo viên nghiêm túc, ít có câu cảm thán, chỉ nêu điểm mạnh, điểm yếu và đưa ra lời khuyên cho học sinh.
+    const prompt = `Bạn là một trợ lý AI giáo dục thông thái (AI Co-pilot). Hãy nhận xét kế hoạch tự học trong ngày của học sinh bằng tiếng Việt ngắn gọn trong 3-4 dòng, hãy nhận xét như 1 giáo viên nghiêm túc, ít có câu cảm thán, chỉ nêu điểm mạnh, điểm yếu và đưa ra lời khuyên cho học sinh.
 Thông tin học sinh nộp:
 - Tổng số công việc tự học dự kiến: ${taskCount} công việc.
 - Tổng thời gian tự học thực tế: ${totalActualTime} giờ (dự kiến ban đầu: ${totalPlannedTime} giờ).
@@ -270,20 +274,44 @@ ${(tasks || []).map((t, i) => `${i+1}. Khía cạnh: ${t.aspect} | Dự kiến: 
 
 Hãy đưa ra lời khuyên thiết thực, khen ngợi nếu học sinh tự giác và nhắc nhở chân thành nếu học sinh chưa đạt thời gian học dự kiến. Nhận xét cần ngắn gọn, súc tích và có thái độ khuyến khích học tập.`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
-    const response = await axios.post(geminiUrl, {
-      contents: [{ parts: [{ text: prompt }] }]
-    });
+    // Danh sách các model Gemini theo thứ tự ưu tiên & cơ chế Retry nhanh (chống lỗi 503 High Demand & Timeout)
+    const modelsToTry = [
+      'gemini-2.5-flash-lite',
+      'gemini-1.5-flash'
+    ];
 
-    const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    res.status(200).json({ status: 'OK', data: aiText.trim() });
-  } catch (err) {
-    if (err.response) {
-      console.error('Gemini API Error Response Data:', JSON.stringify(err.response.data, null, 2));
-    } else {
-      console.error('Gemini API Error:', err.message);
+    for (let i = 0; i < modelsToTry.length; i++) {
+      const modelName = modelsToTry[i];
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`;
+      
+      // Thử tối đa 2 lần cho mỗi model với thời gian chờ ngắn (4.5 giây/lần) để đảm bảo không bị timeout ở Frontend
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const response = await axios.post(geminiUrl, {
+            contents: [{ parts: [{ text: prompt }] }]
+          }, { timeout: 4500 }); // timeout 4.5 giây cho mỗi request AI
+
+          const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (aiText.trim()) {
+            return res.status(200).json({ status: 'OK', data: aiText.trim() });
+          }
+        } catch (err) {
+          const statusCode = err.response?.status || 500;
+          console.warn(`[GEMINI RETRY] Model ${modelName} (Attempt ${attempt}/2) failed with status: ${statusCode || err.code}`);
+          // Nếu lỗi 503 (Overloaded) hoặc 429 (Rate Limit), đợi 500ms trước khi thử lại
+          if ((statusCode === 503 || statusCode === 429) && attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+      }
     }
-    res.status(500).json({ status: 'ERR', message: err.message, errorDetails: err.response?.data });
+
+    // Nếu tất cả các lần gọi Gemini API đều bị quá tải (503), chuyển sang Rule-based Fallback để không bao giờ lỗi UI
+    console.log('[GEMINI FALLBACK] Tất cả model Gemini quá tải, sử dụng nhận xét dự phòng thông minh.');
+    return res.status(200).json({ status: 'OK', data: getFallbackComment() });
+  } catch (err) {
+    console.error('Gemini AI Controller Fatal Error:', err.message);
+    res.status(500).json({ status: 'ERR', message: err.message });
   }
 };
 
